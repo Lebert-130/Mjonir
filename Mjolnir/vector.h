@@ -51,6 +51,7 @@ public:
 	float operator[](int index) const { return coords[index]; }
 
 	Vector2D operator+(const Vector2D &v2) const { return Vector2D(coords[0] + v2.coords[0], coords[1] + v2.coords[1]); }
+	Vector2D operator-(const Vector2D &v2) const { return Vector2D(coords[0] - v2.coords[0], coords[1] - v2.coords[1]); }
 
 	Vector2D& operator+=(const Vector2D &v2) {
 		coords[0] += v2.coords[0];

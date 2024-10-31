@@ -752,7 +752,7 @@ public:
     // empty string contents
   void Empty()
   {
-    Truncate(0);
+    Truncate(0); //-V575
 
     wxASSERT_MSG( empty(), wxT("string not empty after call to Empty()?") );
   }

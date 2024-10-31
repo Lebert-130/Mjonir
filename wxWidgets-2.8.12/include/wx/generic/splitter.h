@@ -315,7 +315,7 @@ private:
 class WXDLLEXPORT wxSplitterEvent : public wxNotifyEvent
 {
 public:
-    wxSplitterEvent(wxEventType type = wxEVT_NULL,
+    wxSplitterEvent(wxEventType type = wxEVT_NULL, //-V730
                     wxSplitterWindow *splitter = (wxSplitterWindow *)NULL)
         : wxNotifyEvent(type)
     {

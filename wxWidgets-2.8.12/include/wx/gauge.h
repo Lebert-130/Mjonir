@@ -50,7 +50,7 @@ extern WXDLLEXPORT_DATA(const wxChar) wxGaugeNameStr[];
 class WXDLLEXPORT wxGaugeBase : public wxControl
 {
 public:
-    wxGaugeBase() { m_rangeMax = m_gaugePos = 0; }
+    wxGaugeBase() { m_rangeMax = m_gaugePos = 0; } //-V730
     virtual ~wxGaugeBase();
 
     bool Create(wxWindow *parent,

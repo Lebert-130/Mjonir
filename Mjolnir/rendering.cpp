@@ -1,3 +1,9 @@
+//TODO: Separate event logic from render logic, it would be much nicer to have event logic in another source file.
+//And by that I mean everything that is about rendering/drawing, should be here. No "move brush to specific location" for example,
+//but instead "Draw the brush with the new location that event.cpp calculated for the brush"
+
+//Find out if it's possible to do that in the first place, if not, then discard this idea.
+
 #pragma warning(disable : 4786)
 #include <vector>
 #include <unordered_map>
@@ -43,8 +49,11 @@ CCamera camera;
 float gridX, gridY;
 Vector2D selectionMin, selectionMax;
 bool selectionStarted;
+bool selectionEnabled;
 bool enterKeyCaptured;
 int lastRendermode;
+
+Vector2D firstGrid;
 
 GLuint Image2Texture(unsigned int width, unsigned int height, unsigned char* data)
 {
@@ -172,7 +181,7 @@ void CreateCube(Vector min, Vector max)
 	glEnd();
 }
 
-void RenderObjects()
+void RenderObjects(bool is3D)
 {
 	for(int i = 0; i < entities.size(); i++){
 		Entity entity = entities[i];
@@ -195,7 +204,11 @@ void RenderObjects()
 
 		glPushMatrix();
 
-		glBindTexture(GL_TEXTURE_2D, brush.texture);
+		if (is3D)
+			glBindTexture(GL_TEXTURE_2D, brush.texture);
+		else
+			glColor3f(brush.editorColor[0], brush.editorColor[1], brush.editorColor[2]);
+		
 		CreateCube(brush.min, brush.max);
 
 		glPopMatrix();
@@ -319,7 +332,7 @@ void MapView3D::Render(wxPaintEvent& event)
 
 	glEnable(GL_TEXTURE_2D);
 
-	RenderObjects();
+	RenderObjects(true);
 
 	glDisable(GL_TEXTURE_2D);
 
@@ -361,6 +374,9 @@ float Translate(float value, float fromMin, float fromMax, float toMin, float to
     return toMin + (valueScaled * toSpan);
 }
 
+float lastGridX = 0.0f;
+float lastGridY = 0.0f;
+
 void MapView2D::ConvertWindowToGridCoordinates(int mouseX, int mouseY, float& gridX, float& gridY)
 {
 	wxSize clientSize = GetClientSize();
@@ -388,6 +404,16 @@ void MapView2D::ConvertWindowToGridCoordinates(int mouseX, int mouseY, float& gr
 	else if(gridY <= -GRID_SIZE/2)
 		gridY = -GRID_SIZE/2;
 }
+
+bool BrushIntersectsSelection(const Brush& brush, int rendermode)
+{
+	if (rendermode == VIEW_TOP){
+		return (brush.max[0] >= selectionMin[0] && brush.min[0] <= selectionMax[0] &&
+			brush.max[1] >= selectionMin[1] && brush.min[1] <= selectionMax[1]);
+	}
+}
+
+std::vector<Brush> selectedBrushes;
 
 void MapView2D::Render()
 {
@@ -435,12 +461,14 @@ void MapView2D::Render()
 		glColor3f(0.0f, 1.0f, 1.0f);
 	else
 		glColor3f(1.0f, 1.0f, 1.0f);
-	glBegin(GL_LINE_LOOP);
-		glVertex3f(selectionMin[0], selectionMin[1], 0.0f);
-		glVertex3f(selectionMin[0], selectionMax[1], 0.0f);
-		glVertex3f(selectionMax[0], selectionMax[1], 0.0f);
-		glVertex3f(selectionMax[0], selectionMin[1], 0.0f);
-	glEnd();
+	if (selectionEnabled){
+		glBegin(GL_LINE_LOOP);
+			glVertex3f(selectionMin[0], selectionMin[1], 0.0f);
+			glVertex3f(selectionMin[0], selectionMax[1], 0.0f);
+			glVertex3f(selectionMax[0], selectionMax[1], 0.0f);
+			glVertex3f(selectionMax[0], selectionMin[1], 0.0f);
+		glEnd();
+	}
 
 	glColor3f(1.0f, 1.0f, 1.0f);
 
@@ -458,14 +486,17 @@ void MapView2D::Render()
 			if(lastRendermode == VIEW_TOP){
 				tmp_brush.min = Vector(selectionMin[0], selectionMin[1], -8.0f);
 				tmp_brush.max = Vector(selectionMax[0], selectionMax[1], 0.0f);
+				tmp_brush.editorColor = Vector(1.0f, 1.0f, 1.0f);
 				tmp_brush.texture = currentTextureGL;
 			} else if(lastRendermode == VIEW_FRONT){
 				tmp_brush.min = Vector(-8.0f, selectionMin[0], selectionMin[1]);
 				tmp_brush.max = Vector(0.0f, selectionMax[0], selectionMax[1]);
+				tmp_brush.editorColor = Vector(1.0f, 1.0f, 1.0f);
 				tmp_brush.texture = currentTextureGL;
 			} else{
 				tmp_brush.min = Vector(selectionMin[0], -8.0f, selectionMin[1]);
 				tmp_brush.max = Vector(selectionMax[0], 0.0f, selectionMax[1]);
+				tmp_brush.editorColor = Vector(1.0f, 1.0f, 1.0f);
 				tmp_brush.texture = currentTextureGL;
 			}
 
@@ -475,9 +506,34 @@ void MapView2D::Render()
 			enterKeyCaptured = true;
 			readyToPlace = false;
 		}
+		else if (tbar->GetToolState(TOOL_SELECT) && selectionEnabled){
+			selectedBrushes.clear();
+
+			for (Brush &brush : brushes){
+				brush.editorColor = Vector(1.0f, 1.0f, 1.0f);
+			}
+
+			for (Brush &brush : brushes){
+				if (BrushIntersectsSelection(brush, lastRendermode))
+					selectedBrushes.push_back(brush);
+			}
+
+			for (Brush &brush : brushes){
+				for (Brush &selectedBrush : selectedBrushes){
+					if (brush == selectedBrush){
+						brush.editorColor = Vector(1.0f, 0.0f, 0.0f);
+					}
+				}
+			}
+
+			enterKeyHandled = false;
+			enterKeyCaptured = true;
+			selectionStarted = false;
+			selectionEnabled = false;
+		}
 	}
 
-	RenderObjects();
+	RenderObjects(false);
 
 	glFlush();
     SwapBuffers();
@@ -512,28 +568,50 @@ void MapView2D::OnMouseWheel(wxMouseEvent& event)
 
 void MapView2D::OnMouseMotion(wxMouseEvent& event)
 {
-    SetFocus();
+	SetFocus();
 
-    int mouseX = event.GetX();
-    int mouseY = event.GetY();
-    ConvertWindowToGridCoordinates(mouseX, mouseY, gridX, gridY);
+	int mouseX = event.GetX();
+	int mouseY = event.GetY();
+	ConvertWindowToGridCoordinates(mouseX, mouseY, gridX, gridY);
 
-    char coords[24];
-    sprintf(coords, "%.2f %.2f", gridX, gridY);
-    frame->SetStatusText(coords, 1);
+	char coords[24];
+	sprintf(coords, "%.2f %.2f", gridX, gridY);
+	frame->SetStatusText(coords, 1);
 
-    if (tbar->GetToolState(TOOL_SELECT) || tbar->GetToolState(TOOL_CBLOCK)) {
-        if (selectionStarted) {
-            selectionMax = Vector2D(gridX, gridY);
-            if (tbar->GetToolState(TOOL_CBLOCK))
-                readyToPlace = true;
-        }
-    }
+	if (tbar->GetToolState(TOOL_SELECT) || tbar->GetToolState(TOOL_CBLOCK)) {
+		if (selectionStarted) {
+			if (tbar->GetToolState(TOOL_SELECT) && !selectedBrushes.empty()) {
+				if (lastRendermode == VIEW_TOP) {
+					float deltaX = gridX - lastGridX;
+					float deltaY = gridY - lastGridY;
 
-    if (tbar->GetToolState(TOOL_ENTITY))
-        readyToPlace = true;
+					for (Brush &brush : brushes) {
+						for (Brush &selectedBrush : selectedBrushes) {
+							if (brush == selectedBrush) {
+								brush.min = brush.min + Vector(deltaX, deltaY, 0.0f);
+								brush.max = brush.max + Vector(deltaX, deltaY, 0.0f);
+								selectedBrush.min = selectedBrush.min + Vector(deltaX, deltaY, 0.0f);
+								selectedBrush.max = selectedBrush.max + Vector(deltaX, deltaY, 0.0f);
+							}
+						}
+					}
+				}
+			}
 
-    Refresh();
+			selectionMax = Vector2D(gridX, gridY);
+			selectionEnabled = true;
+			if (tbar->GetToolState(TOOL_CBLOCK))
+				readyToPlace = true;
+		}
+	}
+
+	if (tbar->GetToolState(TOOL_ENTITY))
+		readyToPlace = true;
+
+	lastGridX = gridX;
+	lastGridY = gridY;
+
+	Refresh();
 }
 
 void MapView2D::OnMouseDown(wxMouseEvent& event)
@@ -551,6 +629,14 @@ void MapView2D::OnMouseDown(wxMouseEvent& event)
 
 		entities.push_back(tmp_entity);
 	} else if(tbar->GetToolState(TOOL_SELECT) || tbar->GetToolState(TOOL_CBLOCK)){
+		if (tbar->GetToolState(TOOL_SELECT)){
+			if (!selectedBrushes.empty()){
+				if (lastRendermode == VIEW_TOP){
+					firstGrid = Vector2D(gridX, gridY);
+				}
+			}
+		}
+
 		selectionMin = Vector2D(gridX, gridY);
 		selectionStarted = true;
 	}

@@ -6,11 +6,15 @@ typedef struct {
 	Vector pos;
 } Entity;
 
-typedef struct {
+//TODO: Make colors their own type instead of using Vector
+struct Brush {
 	Vector min;
 	Vector max;
+	Vector editorColor;
 	GLuint texture;
-} Brush;
+
+	bool operator==(const Brush &b2) const { return min == b2.min && max == b2.max && texture == b2.texture; }
+};
 
 extern bool enterKeyCaptured;
 
